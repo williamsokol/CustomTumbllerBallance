@@ -81,28 +81,64 @@ void balanceCar()
   encoder_count_left_a = 0;
   encoder_count_right_a = 0;
   mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  kalmanfilter.Angle(ax, ay, az, gx, gy, gz, dt, Q_angle, Q_gyro, R_angle, C_0, K1);
-  kalmanfilter_angle = kalmanfilter.angle;
-  double balance_control_output = kp_balance * (kalmanfilter_angle - angle_zero) + kd_balance * (kalmanfilter.Gyro_x - angular_velocity_zero);
+//  kalmanfilter.Angle(ax, ay, az, gx, gy, gz, dt, Q_angle, Q_gyro, R_angle, C_0, K1);
+//  kalmanfilter_angle = kalmanfilter.angle;
+//  static double angle; 
+//  angle = kalmanfilter_angle;
+  
+  double accelYAngle = atan2(ay, az);
+  double degAccelAngle = accelYAngle*57.29578;
 
-  speed_control_period_count++;
-  if (speed_control_period_count >= 8)
-  {
-    speed_control_period_count = 0;
-    double car_speed = (encoder_left_pulse_num_speed + encoder_right_pulse_num_speed) * 0.5;
-    encoder_left_pulse_num_speed = 0;
-    encoder_right_pulse_num_speed = 0;
-    speed_filter = speed_filter_old * 0.7 + car_speed * 0.3;
-    speed_filter_old = speed_filter;
-    car_speed_integeral += speed_filter;
-    car_speed_integeral += -setting_car_speed;
-    car_speed_integeral = constrain(car_speed_integeral, -3000, 3000);
-    speed_control_output = -kp_speed * speed_filter - ki_speed * car_speed_integeral;
-    rotation_control_output = setting_turn_speed + kd_turn * kalmanfilter.Gyro_z;
-  }
+  double scaledZGyro = ((gx*0.0000025)*57.29578);
 
-  pwm_left = balance_control_output - speed_control_output - rotation_control_output;
-  pwm_right = balance_control_output - speed_control_output + rotation_control_output;
+  static double angle = degAccelAngle; 
+  angle = (0.9934 * (angle + scaledZGyro)) + (0.0066 * degAccelAngle); // complimentary filter
+  kalmanfilter_angle = angle;
+
+  double pTerm, iTerm, dTerm, output, angleError;
+  float targetAngle = -2.2;
+  float Kp = 10, kpOutput = 1;
+  float Ki = .9, kiOutput = .09;
+  float Kd = 7;
+
+
+  angleError = (angle - targetAngle); // subtract angle by offset
+    
+  // calculate the proportional component
+  pTerm = angleError*Kp;
+  // calculate the integral component (summation of past errors * i scalar)
+  static double integral = 0;
+  integral += angleError;
+  integral =  constrain(integral, -100,100);
+  iTerm = Ki * integral;
+  // calculate the derivative component
+  static double lastAngle = 0;
+  dTerm = Kd * (angle-lastAngle);
+  lastAngle = angle;
+
+  
+  output = (pTerm + iTerm - dTerm);
+
+  // angle adjusting
+  static double outputFilter = output;
+  static double outputFilterOld, outputIntegral = 0;
+  outputFilter = outputFilterOld*.7 + output*.03;
+  outputFilterOld = outputFilter;
+  outputIntegral += outputFilter;
+  // car_speed_integeral += -setting_car_speed;
+  outputIntegral = constrain(outputIntegral, -3000, 3000);
+  
+  double outputControlOutput = -kpOutput * outputFilter + kiOutput * outputIntegral;
+
+  pwm_left  = output + outputControlOutput;
+  pwm_right = output + outputControlOutput;
+
+  Serial.print(" angle ");
+  Serial.print(angle);//32768
+//  Serial.print(" delta angle ");
+//  Serial.print(scaledZGyro);
+
+  Serial.println(" ");
 
   pwm_left = constrain(pwm_left, -255, 255);
   pwm_right = constrain(pwm_right, -255, 255);
