@@ -97,8 +97,8 @@ void balanceCar()
 
   double pTerm, iTerm, dTerm, output, angleError;
   float targetAngle = -2.2;
-  float Kp = 10, kpOutput = 1;
-  float Ki = .9, kiOutput = .09;
+  float Kp = 10, kpOutput = 1;    // kp = 10
+  float Ki = .9, kiOutput = -.09;  //
   float Kd = 7;
 
 
@@ -128,7 +128,7 @@ void balanceCar()
   // car_speed_integeral += -setting_car_speed;
   outputIntegral = constrain(outputIntegral, -3000, 3000);
   
-  double outputControlOutput = -kpOutput * outputFilter + kiOutput * outputIntegral;
+  double outputControlOutput = -kpOutput * outputFilter - kiOutput * outputIntegral;
 
   pwm_left  = output + outputControlOutput;
   pwm_right = output + outputControlOutput;
