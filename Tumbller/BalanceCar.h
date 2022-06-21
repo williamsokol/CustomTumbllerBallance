@@ -43,6 +43,7 @@ int setting_turn_speed = 0;
 double pwm_left = 0;
 double pwm_right = 0;
 float kalmanfilter_angle;
+double outputControlOutput = 0;
 // char balance_angle_min = -27;
 // char balance_angle_max = 27;
 char balance_angle_min = -22;
@@ -89,17 +90,19 @@ void balanceCar()
   double accelYAngle = atan2(ay, az);
   double degAccelAngle = accelYAngle*57.29578;
 
-  double scaledZGyro = ((gx*0.0000025)*57.29578);
+  double scaledZGyro = ((gx*0.00000075)*57.29578);
+  double scaledYGyro = ((gy*0.00000075)*57.29578);
 
   static double angle = degAccelAngle; 
   angle = (0.9934 * (angle + scaledZGyro)) + (0.0066 * degAccelAngle); // complimentary filter
   kalmanfilter_angle = angle;
 
   double pTerm, iTerm, dTerm, output, angleError;
-  float targetAngle = -2.2;
-  float Kp = 10, kpOutput = 1;    // kp = 10
-  float Ki = .9, kiOutput = -.09;  //
-  float Kd = 7;
+
+  float targetAngle = -1.5;
+  float Kp = 30, kpOutput = .03;    // kp = .07
+  float Ki = .0, kiOutput = .09;   // ki = .14
+  float Kd = 4;
 
 
   angleError = (angle - targetAngle); // subtract angle by offset
@@ -119,27 +122,41 @@ void balanceCar()
   
   output = (pTerm + iTerm - dTerm);
 
-  // angle adjusting
-  static double outputFilter = output;
-  static double outputFilterOld, outputIntegral = 0;
-  outputFilter = outputFilterOld*.7 + output*.03;
-  outputFilterOld = outputFilter;
-  outputIntegral += outputFilter;
-  // car_speed_integeral += -setting_car_speed;
-  outputIntegral = constrain(outputIntegral, -3000, 3000);
+  static int count =0;
+  count ++;
+  if(count >= 2){
+    count = 0;
+    // angle adjusting
+    static double outputFilter = output;
+    static double outputFilterOld, outputIntegral = 0;
+    outputFilter = outputFilterOld * 0.7 + output * 0.3;
+    outputFilterOld = outputFilter;
+    outputIntegral += outputFilter;
+    outputIntegral += -setting_car_speed;
+    outputIntegral = constrain(outputIntegral, -3000, 3000);
+    
+    outputControlOutput = -kpOutput * outputFilter - kiOutput * outputIntegral;
+    rotation_control_output = setting_turn_speed + kd_turn * scaledYGyro;
+    
+  }
   
-  double outputControlOutput = -kpOutput * outputFilter - kiOutput * outputIntegral;
+  pwm_left  = output - outputControlOutput - rotation_control_output;
+  pwm_right = output - outputControlOutput + rotation_control_output;
 
-  pwm_left  = output + outputControlOutput;
-  pwm_right = output + outputControlOutput;
-
-  Serial.print(" angle ");
-  Serial.print(angle);//32768
+  static int count2 =0;
+  count2 ++;
+  if(count2 % 10 == 0){
+    static double oldtime = 0;
+    double deltatime = millis() - oldtime;
+    oldtime =  millis();
+    //Serial.print(" angle ");
+    Serial.print(deltatime/10);//32768
 //  Serial.print(" delta angle ");
 //  Serial.print(scaledZGyro);
+    Serial.println(" ");
 
-  Serial.println(" ");
-
+  }
+  
   pwm_left = constrain(pwm_left, -255, 255);
   pwm_right = constrain(pwm_right, -255, 255);
   if (motion_mode != START && motion_mode != STOP && (kalmanfilter_angle < balance_angle_min || balance_angle_max < kalmanfilter_angle))
